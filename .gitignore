@@ -1,0 +1,32 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+
+# Secrets (never commit real keys)
+.env
+.env.*
+!.env.example
+**/.secrets.yaml
+**/.private_config.yaml
+
+# ESP32 build artifacts (see xiaozhi-esp32/.gitignore)
+xiaozhi-esp32/tmp/
+xiaozhi-esp32/components/
+xiaozhi-esp32/managed_components/
+xiaozhi-esp32/build/
+xiaozhi-esp32/dist/
+xiaozhi-esp32/sdkconfig.old
+xiaozhi-esp32/sdkconfig
+xiaozhi-esp32/dependencies.lock
+xiaozhi-esp32/releases/
+xiaozhi-esp32/.cache
+xiaozhi-esp32/*.bin
+
+# Server runtime data & large models (see xiaozhi-esp32-server/.gitignore)
+xiaozhi-esp32-server/main/xiaozhi-server/data/
+xiaozhi-esp32-server/main/xiaozhi-server/models/SenseVoiceSmall/model.pt
+xiaozhi-esp32-server/**/__pycache__/
+xiaozhi-esp32-server/**/node_modules/
