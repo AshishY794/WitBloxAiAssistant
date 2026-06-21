@@ -14,7 +14,6 @@ Thumbs.db
 
 # ESP32 build artifacts (see xiaozhi-esp32/.gitignore)
 xiaozhi-esp32/tmp/
-xiaozhi-esp32/components/
 xiaozhi-esp32/managed_components/
 xiaozhi-esp32/build/
 xiaozhi-esp32/dist/
