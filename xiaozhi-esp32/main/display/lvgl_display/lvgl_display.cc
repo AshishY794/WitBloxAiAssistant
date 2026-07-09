@@ -118,17 +118,15 @@ void LvglDisplay::UpdateStatusBar(bool update_all) {
     // Update mute icon
     {
         DisplayLockGuard lock(this);
-        if (mute_label_ == nullptr) {
-            return;
-        }
-
-        // Update icon if mute state changes
-        if (codec->output_volume() == 0 && !muted_) {
-            muted_ = true;
-            lv_label_set_text(mute_label_, FONT_AWESOME_VOLUME_XMARK);
-        } else if (codec->output_volume() > 0 && muted_) {
-            muted_ = false;
-            lv_label_set_text(mute_label_, "");
+        if (mute_label_ != nullptr) {
+            // Update icon if mute state changes
+            if (codec->output_volume() == 0 && !muted_) {
+                muted_ = true;
+                lv_label_set_text(mute_label_, FONT_AWESOME_VOLUME_XMARK);
+            } else if (codec->output_volume() > 0 && muted_) {
+                muted_ = false;
+                lv_label_set_text(mute_label_, "");
+            }
         }
     }
 

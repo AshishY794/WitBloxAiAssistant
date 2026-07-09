@@ -9,7 +9,7 @@ from google.generativeai import types, GenerationConfig
 from core.providers.llm.base import LLMProviderBase
 from core.utils.util import check_model_key
 from config.logger import setup_logging
-from google.generativeai.types import GenerateContentResponse
+from google.generativeai.types import GenerateContentResponse, RequestOptions
 from requests import RequestException
 
 log = setup_logging()
@@ -170,7 +170,7 @@ class LLMProvider(LLMProviderBase):
             generation_config=self.gen_cfg,
             tools=tools,
             stream=True,
-            timeout=self.timeout,
+            request_options=RequestOptions(timeout=self.timeout),
         )
 
         try:

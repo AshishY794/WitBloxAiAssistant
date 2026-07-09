@@ -1,124 +1,163 @@
-# WitBlox AI — local server on your laptop (Windows)
+# WitBlox AI — local server with dashboard (Windows, no Docker)
 
-Your laptop IP (Wi‑Fi): **192.168.0.103**
+Your laptop IP (Wi‑Fi): **192.168.0.103** — run `ipconfig` if this changes.
 
-ESP32 and laptop must be on the **same Wi‑Fi network**.
+ESP32 and laptop must be on the **same Wi‑Fi**.
 
----
-
-## What was already configured
-
-| Item | Value |
-|------|--------|
-| Server config | `xiaozhi-esp32-server/main/xiaozhi-server/data/.config.yaml` |
-| ESP32 OTA URL | `http://192.168.0.103:8003/xiaozhi/ota/` in `sdkconfig.defaults.esp32` |
-| WebSocket (device talks here) | `ws://192.168.0.103:8000/xiaozhi/v1/` |
+| Service | URL |
+|---------|-----|
+| **Dashboard (智控台)** | http://127.0.0.1:8001 |
+| **Manager API** | http://127.0.0.1:8002/xiaozhi |
+| **WebSocket (ESP32)** | `ws://192.168.0.103:8000/xiaozhi/v1/` |
+| **OTA (ESP32)** | http://192.168.0.103:8002/xiaozhi/ota/ |
 
 ---
 
-## Step 1 — Install Docker Desktop (recommended on Windows)
+## What you need (install once)
 
-1. Download: https://www.docker.com/products/docker-desktop/
-2. Install and restart PC if asked
-3. Open Docker Desktop and wait until it says **Running**
+| Software | Version | Download |
+|----------|---------|----------|
+| **Anaconda** | Python **3.10** env | https://www.anaconda.com/download |
+| **JDK** | **21** | https://adoptium.net/ |
+| **Maven** | latest | https://maven.apache.org/download.cgi |
+| **Node.js** | LTS | https://nodejs.org/ |
+| **MySQL** | 8.x | https://dev.mysql.com/downloads/installer/ |
+| **Redis** | Windows port or Memurai | https://github.com/tporadowski/redis/releases or https://www.memurai.com/ |
 
-Your PC has **Python 3.13** only; the server officially needs **Python 3.10**, so **Docker is the easiest path**.
+**RAM:** 8 GB+ recommended for dashboard + local speech model.
 
----
-
-## Step 2 — Download speech model (~240 MB, one time)
-
-Download **model.pt** and save to:
+**Speech model** (already downloaded if you followed earlier steps):
 
 ```
 xiaozhi-esp32-server\main\xiaozhi-server\models\SenseVoiceSmall\model.pt
 ```
 
-Direct link:
+---
 
-https://modelscope.cn/models/iic/SenseVoiceSmall/resolve/master/model.pt
+## Step 1 — MySQL database
 
-Or run in PowerShell:
+1. Install MySQL, set root password to **`123456`** (or change `application-dev.yml` to match).
+2. Create the database:
 
-```powershell
-cd C:\Users\HP\Downloads\WitBloxAiChat\xiaozhi-esp32-server\main\xiaozhi-server\models\SenseVoiceSmall
-curl.exe -L -o model.pt "https://modelscope.cn/models/iic/SenseVoiceSmall/resolve/master/model.pt"
+```sql
+CREATE DATABASE xiaozhi_esp32_server CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
----
-
-## Step 3 — Add free LLM API key
-
-1. Register: https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys
-2. Create an API key (ChatGLM **glm-4-flash** is free tier)
-3. Edit `data\.config.yaml` and replace `YOUR_ZHIPU_API_KEY` with your real key
+3. Start **MySQL** service (Windows Services → MySQL).
 
 ---
 
-## Step 4 — Start the server
+## Step 2 — Redis
+
+1. Install Redis for Windows or Memurai.
+2. Start it on **port 6379** (default, no password).
+
+---
+
+## Step 3 — Python environment (xiaozhi-server)
+
+Open **Anaconda Prompt** (Run as Administrator):
 
 ```powershell
+conda create -n xiaozhi-esp32-server python=3.10 -y
+conda activate xiaozhi-esp32-server
+conda install libopus ffmpeg -y
+
 cd C:\Users\HP\Downloads\WitBloxAiChat\xiaozhi-esp32-server\main\xiaozhi-server
-docker compose up -d
-docker logs -f xiaozhi-esp32-server
+pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
+pip install -r requirements.txt
 ```
-
-Success looks like:
-
-```text
-OTA接口是     http://192.168.0.103:8003/xiaozhi/ota/
-Websocket地址是 ws://192.168.0.103:8000/xiaozhi/v1/
-```
-
-**Test in browser:** open http://192.168.0.103:8003/xiaozhi/ota/  
-You should see something like “OTA接口运行正常”.
 
 ---
 
-## Step 5 — Allow Windows Firewall (if browser/device cannot connect)
+## Step 4 — Manager API (Java backend)
 
-Allow inbound **TCP 8000** and **8003** for Docker/Python on **Private network**.
+1. Set **JAVA_HOME** to JDK 21 and add **Maven** to PATH.
+2. Edit DB/Redis passwords if needed:
+
+`xiaozhi-esp32-server\main\manager-api\src\main\resources\application-dev.yml`
+
+3. Start API (from repo root):
+
+```powershell
+cd C:\Users\HP\Downloads\WitBloxAiChat\xiaozhi-esp32-server\main\manager-api
+mvn spring-boot:run
+```
+
+Wait until you see: `Started AdminApplication` and http://localhost:8002/xiaozhi/doc.html
+
+Or run: `.\scripts\start-manager-api.ps1`
 
 ---
 
-## Step 6 — Flash ESP32 with local OTA URL
+## Step 5 — Dashboard (manager-web)
 
-After changing `sdkconfig.defaults.esp32`:
+New terminal:
+
+```powershell
+cd C:\Users\HP\Downloads\WitBloxAiChat\xiaozhi-esp32-server\main\manager-web
+npm install
+npm run serve
+```
+
+Open **http://127.0.0.1:8001** — register the **first user** (becomes admin).
+
+Or run: `.\scripts\start-manager-web.ps1`
+
+### In the dashboard (admin)
+
+1. **参数管理** → copy **`server.secret`** value.
+2. Paste into `main\xiaozhi-server\data\.config.yaml` → `manager-api.secret`.
+3. **参数管理** → set **`server.websocket`** = `ws://192.168.0.103:8000/xiaozhi/v1/`
+4. **参数管理** → set **`server.ota`** = `http://192.168.0.103:8002/xiaozhi/ota/`
+5. **模型配置** → **大语言模型** → add your **Gemini** (or ChatGLM) API key.
+
+---
+
+## Step 6 — AI server (xiaozhi-server)
+
+Anaconda Prompt:
+
+```powershell
+conda activate xiaozhi-esp32-server
+cd C:\Users\HP\Downloads\WitBloxAiChat\xiaozhi-esp32-server\main\xiaozhi-server
+python app.py
+```
+
+Success log includes WebSocket on port **8000**.
+
+Or run: `.\scripts\start-xiaozhi-server.ps1`
+
+---
+
+## Step 7 — Windows Firewall
+
+Allow inbound on **Private** network: **TCP 8000**, **8002**, **8001** (and **8003** if using vision).
+
+---
+
+## Step 8 — ESP32 firmware
+
+OTA URL in `xiaozhi-esp32\sdkconfig.defaults.esp32` points to dashboard OTA (**port 8002**).
+
+Rebuild and flash after IP changes:
 
 ```powershell
 cd C:\Users\HP\Downloads\WitBloxAiChat\xiaozhi-esp32
-idf.py fullclean
-idf.py set-target esp32
-idf.py menuconfig
-# Board: Bread Compact ESP32 DevKit
-idf.py -p COM3 build flash monitor
+idf.py build flash monitor
 ```
 
-Device will call your laptop OTA URL instead of `api.tenclass.net`.
+---
+
+## Start order (every time)
+
+1. MySQL + Redis  
+2. `manager-api` (port 8002)  
+3. `manager-web` (port 8001)  
+4. `python app.py` (port 8000)
 
 ---
 
-## Step 7 — Test
+## Stop
 
-1. Server running on laptop  
-2. ESP32 on same Wi‑Fi as laptop  
-3. Watch serial monitor: should connect to `192.168.0.103`  
-4. Wake word still **你好小智** (hardware model) — server persona is WitBlox in config
-
----
-
-## If your laptop IP changes
-
-1. Run `ipconfig` → note new IPv4  
-2. Update `data\.config.yaml` websocket URL  
-3. Update `sdkconfig.defaults.esp32` `CONFIG_OTA_URL`  
-4. Rebuild and flash ESP32  
-
----
-
-## Stop server
-
-```powershell
-cd C:\Users\HP\Downloads\WitBloxAiChat\xiaozhi-esp32-server\main\xiaozhi-server
-docker compose down
-```
+Close each terminal window, or Ctrl+C in each service.

@@ -9,4 +9,4 @@ CONFIG_ESP_TASK_WDT_TIMEOUT_S=20
 CONFIG_ESP_SYSTEM_EVENT_TASK_STACK_SIZE=4096
 
 # Local WitBlox server on your laptop (change IP if your LAN address changes)
-CONFIG_OTA_URL="http://192.168.0.103:8003/xiaozhi/ota/"
+CONFIG_OTA_URL="http://192.168.0.106:8003/xiaozhi/ota/"

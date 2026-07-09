@@ -192,19 +192,19 @@ esp_err_t Ota::CheckVersion() {
         cJSON *timezone_offset = cJSON_GetObjectItem(server_time, "timezone_offset");
         
         if (cJSON_IsNumber(timestamp)) {
-            // 设置系统时间
+            // Set system clock to Indian Standard Time (UTC+05:30).
+            // Server may send China (+8 / 480 min); we always use IST (+330 min).
             struct timeval tv;
             double ts = timestamp->valuedouble;
-            
-            // 如果有时区偏移，计算本地时间
-            if (cJSON_IsNumber(timezone_offset)) {
-                ts += (timezone_offset->valueint * 60 * 1000); // 转换分钟为毫秒
-            }
-            
-            tv.tv_sec = (time_t)(ts / 1000);  // 转换毫秒为秒
-            tv.tv_usec = (suseconds_t)((long long)ts % 1000) * 1000;  // 剩余的毫秒转换为微秒
+            constexpr int kIstOffsetMinutes = 330;  // India = UTC+5:30
+            (void)timezone_offset;  // ignore server timezone; force IST
+            ts += (kIstOffsetMinutes * 60 * 1000);
+
+            tv.tv_sec = (time_t)(ts / 1000);
+            tv.tv_usec = (suseconds_t)((long long)ts % 1000) * 1000;
             settimeofday(&tv, NULL);
             has_server_time_ = true;
+            ESP_LOGI(TAG, "System time set to IST (UTC+05:30)");
         }
     } else {
         ESP_LOGW(TAG, "No server_time section found!");

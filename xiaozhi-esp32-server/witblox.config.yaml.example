@@ -1,25 +1,17 @@
-# WitBlox AI — local laptop test config
+# WitBlox AI — dashboard mode example
 # Copy to: main/xiaozhi-server/data/.config.yaml
-# Gemini key: https://aistudio.google.com/apikey
-# If your PC IP changes, update the URLs below and rebuild ESP32 firmware OTA URL
+# Configure LLM keys and persona in the web dashboard (http://127.0.0.1:8001)
 
 server:
-  websocket: ws://192.168.0.103:8000/xiaozhi/v1/
+  ip: 0.0.0.0
+  port: 8000
+  http_port: 8003
+  # India Standard Time (UTC+05:30) — hours; OTA multiplies by 60 → minutes
+  timezone_offset: +5.5
   vision_explain: http://192.168.0.103:8003/mcp/vision/explain
 
-prompt: |
-  I am WitBlox AI, a friendly voice assistant for learning and DIY projects.
-  I speak clearly, keep answers short, and help users in simple English or Hindi when asked.
+manager-api:
+  url: http://127.0.0.1:8002/xiaozhi
+  secret: YOUR_SERVER_SECRET_FROM_DASHBOARD
 
-selected_module:
-  LLM: GeminiLLM
-  TTS: EdgeTTS
-  ASR: FunASR
-  Intent: function_call
-
-LLM:
-  GeminiLLM:
-    api_key: YOUR_GEMINI_API_KEY
-    model_name: gemini-2.5-flash
-    http_proxy: ""
-    https_proxy: ""
+prompt_template: agent-base-prompt.txt

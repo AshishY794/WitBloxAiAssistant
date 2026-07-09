@@ -14,6 +14,93 @@
 
 #define TAG "OledDisplay"
 
+namespace {
+
+// WiFi icon on left; status text keeps a gap so it never sits under the icon.
+constexpr int kWifiIconSlotWidth = 22;
+constexpr int kTextGapAfterWifi = 4;
+constexpr int kTextLeftInset = kWifiIconSlotWidth + kTextGapAfterWifi;
+
+void ApplyTopLabelScrollStyle(lv_obj_t* label) {
+    static lv_anim_t scroll_anim;
+    lv_anim_init(&scroll_anim);
+    lv_anim_set_delay(&scroll_anim, 400);
+    lv_anim_set_repeat_count(&scroll_anim, LV_ANIM_REPEAT_INFINITE);
+    lv_obj_set_style_anim(label, &scroll_anim, LV_PART_MAIN);
+    lv_obj_set_style_anim_duration(label, lv_anim_speed_clamped(60, 300, 60000), LV_PART_MAIN);
+}
+
+void ClearTopLabelScrollStyle(lv_obj_t* label) {
+    lv_obj_set_style_anim(label, nullptr, LV_PART_MAIN);
+}
+
+void ConfigureTopBarLabel(lv_obj_t* label, const char* text) {
+    if (label == nullptr) {
+        return;
+    }
+    if (text == nullptr) {
+        text = "";
+    }
+
+    const lv_font_t* font = lv_obj_get_style_text_font(label, LV_PART_MAIN);
+    const int screen_width = LV_HOR_RES;
+    const int text_band_width = screen_width - kTextLeftInset;
+
+    lv_label_set_text(label, text);
+
+    lv_point_t text_size;
+    lv_txt_get_size(&text_size, text, font, 0, 0, LV_COORD_MAX, LV_TEXT_FLAG_NONE);
+
+    const int centered_left = (screen_width - text_size.x) / 2;
+    // True screen center only when the whole string clears the WiFi icon + gap
+    const bool fits_true_center =
+        text_size.x > 0 && text_size.x <= text_band_width && centered_left >= kTextLeftInset;
+
+    if (fits_true_center) {
+        lv_obj_set_width(label, screen_width);
+        lv_obj_align(label, LV_ALIGN_LEFT_MID, 0, 0);
+        lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        ClearTopLabelScrollStyle(label);
+    } else if (text_size.x <= text_band_width) {
+        // Status like "Scanning WiFi" — center in the safe band after WiFi
+        lv_obj_set_width(label, text_band_width);
+        lv_obj_align(label, LV_ALIGN_LEFT_MID, kTextLeftInset, 0);
+        lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, 0);
+        ClearTopLabelScrollStyle(label);
+    } else {
+        // Long text scrolls only in the safe band (gap after WiFi)
+        lv_obj_set_width(label, text_band_width);
+        lv_obj_align(label, LV_ALIGN_LEFT_MID, kTextLeftInset, 0);
+        lv_label_set_long_mode(label, LV_LABEL_LONG_SCROLL_CIRCULAR);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_LEFT, 0);
+        ApplyTopLabelScrollStyle(label);
+    }
+}
+
+std::string FormatOledTopBarText(const char* text) {
+    if (text == nullptr || text[0] == '\0') {
+        return "";
+    }
+    if (strcmp(text, Lang::Strings::CHECKING_NEW_VERSION) == 0) {
+        return "Check update";
+    }
+    const char* connected_prefix = Lang::Strings::CONNECTED_TO;
+    const size_t connected_len = strlen(connected_prefix);
+    if (strncmp(text, connected_prefix, connected_len) == 0) {
+        return std::string(text + connected_len);
+    }
+    const char* connect_prefix = Lang::Strings::CONNECT_TO;
+    const size_t connect_len = strlen(connect_prefix);
+    if (strncmp(text, connect_prefix, connect_len) == 0) {
+        return "Connecting...";
+    }
+    return text;
+}
+
+}  // namespace
+
 LV_FONT_DECLARE(BUILTIN_TEXT_FONT);
 LV_FONT_DECLARE(BUILTIN_ICON_FONT);
 LV_FONT_DECLARE(font_awesome_20_4);
@@ -103,15 +190,13 @@ OledDisplay::~OledDisplay() {
     }
 
     bool is_128x64_layout = (top_bar_ != nullptr);
-    if (status_bar_ != nullptr && is_128x64_layout) {
-        status_label_ = nullptr;
-        notification_label_ = nullptr;
-        lv_obj_del(status_bar_);
-    }
     if (top_bar_ != nullptr) {
         network_label_ = nullptr;
         mute_label_ = nullptr;
         battery_label_ = nullptr;
+        status_label_ = nullptr;
+        notification_label_ = nullptr;
+        status_bar_ = nullptr;
         lv_obj_del(top_bar_);
     }
     if (side_bar_ != nullptr) {
@@ -143,6 +228,38 @@ bool OledDisplay::Lock(int timeout_ms) {
 
 void OledDisplay::Unlock() {
     lvgl_port_unlock();
+}
+
+void OledDisplay::SetStatus(const char* status) {
+    const std::string formatted = FormatOledTopBarText(status);
+    if (!setup_ui_called_) {
+        ESP_LOGW(TAG, "SetStatus('%s') called before SetupUI() - message will be lost!", status);
+    }
+    DisplayLockGuard lock(this);
+    if (status_label_ == nullptr) {
+        return;
+    }
+    ConfigureTopBarLabel(status_label_, formatted.c_str());
+    lv_obj_remove_flag(status_label_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(notification_label_, LV_OBJ_FLAG_HIDDEN);
+    last_status_update_time_ = std::chrono::system_clock::now();
+}
+
+void OledDisplay::ShowNotification(const char* notification, int duration_ms) {
+    const std::string formatted = FormatOledTopBarText(notification);
+    if (!setup_ui_called_) {
+        ESP_LOGW(TAG, "ShowNotification('%s') called before SetupUI() - message will be lost!", notification);
+    }
+    DisplayLockGuard lock(this);
+    if (notification_label_ == nullptr) {
+        return;
+    }
+    ConfigureTopBarLabel(notification_label_, formatted.c_str());
+    lv_obj_remove_flag(notification_label_, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(status_label_, LV_OBJ_FLAG_HIDDEN);
+
+    esp_timer_stop(notification_timer_);
+    ESP_ERROR_CHECK(esp_timer_start_once(notification_timer_, duration_ms * 1000));
 }
 
 void OledDisplay::SetChatMessage(const char* role, const char* content) {
@@ -187,61 +304,54 @@ void OledDisplay::SetupUI_128x64() {
     lv_obj_set_style_border_width(container_, 0, 0);
     lv_obj_set_style_pad_row(container_, 0, 0);
 
-    /* Layer 1: Top bar - for status icons */
+    /* Top bar: full-width centered text (0..128), WiFi icon overlaid on left */
     top_bar_ = lv_obj_create(container_);
     lv_obj_set_size(top_bar_, LV_HOR_RES, 16);
     lv_obj_set_style_radius(top_bar_, 0, 0);
     lv_obj_set_style_bg_opa(top_bar_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(top_bar_, 0, 0);
     lv_obj_set_style_pad_all(top_bar_, 0, 0);
-    lv_obj_set_flex_flow(top_bar_, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(top_bar_, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_scrollbar_mode(top_bar_, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_remove_flag(top_bar_, LV_OBJ_FLAG_SCROLLABLE);
 
-    network_label_ = lv_label_create(top_bar_);
-    lv_label_set_text(network_label_, "");
-    lv_obj_set_style_text_font(network_label_, icon_font, 0);
-
-    lv_obj_t* right_icons = lv_obj_create(top_bar_);
-    lv_obj_set_size(right_icons, LV_SIZE_CONTENT, LV_SIZE_CONTENT);
-    lv_obj_set_style_bg_opa(right_icons, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(right_icons, 0, 0);
-    lv_obj_set_style_pad_all(right_icons, 0, 0);
-    lv_obj_set_flex_flow(right_icons, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(right_icons, LV_FLEX_ALIGN_END, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-
-    mute_label_ = lv_label_create(right_icons);
-    lv_label_set_text(mute_label_, "");
-    lv_obj_set_style_text_font(mute_label_, icon_font, 0);
-
-    battery_label_ = lv_label_create(right_icons);
-    lv_label_set_text(battery_label_, "");
-    lv_obj_set_style_text_font(battery_label_, icon_font, 0);
-
-    /* Layer 2: Status bar - for center text labels */
-    status_bar_ = lv_obj_create(screen);
+    /* Bottom layer: status/time spans full 128px so short text is true center */
+    status_bar_ = lv_obj_create(top_bar_);
     lv_obj_set_size(status_bar_, LV_HOR_RES, 16);
-    lv_obj_set_style_radius(status_bar_, 0, 0);
-    lv_obj_set_style_bg_opa(status_bar_, LV_OPA_TRANSP, 0);  // Transparent background
+    lv_obj_set_style_bg_opa(status_bar_, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(status_bar_, 0, 0);
     lv_obj_set_style_pad_all(status_bar_, 0, 0);
-    lv_obj_set_scrollbar_mode(status_bar_, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_style_layout(status_bar_, LV_LAYOUT_NONE, 0);  // Use absolute positioning
-    lv_obj_align(status_bar_, LV_ALIGN_TOP_MID, 0, 0);  // Overlap with top_bar_
+    lv_obj_remove_flag(status_bar_, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(status_bar_, LV_ALIGN_LEFT_MID, 0, 0);
 
     notification_label_ = lv_label_create(status_bar_);
-    lv_obj_set_width(notification_label_, LV_HOR_RES);
-    lv_obj_set_style_text_align(notification_label_, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(notification_label_, "");
-    lv_obj_align(notification_label_, LV_ALIGN_CENTER, 0, 0);
     lv_obj_add_flag(notification_label_, LV_OBJ_FLAG_HIDDEN);
 
     status_label_ = lv_label_create(status_bar_);
-    lv_obj_set_width(status_label_, LV_HOR_RES);
-    lv_label_set_long_mode(status_label_, LV_LABEL_LONG_SCROLL_CIRCULAR);
-    lv_obj_set_style_text_align(status_label_, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(status_label_, Lang::Strings::INITIALIZING);
-    lv_obj_align(status_label_, LV_ALIGN_CENTER, 0, 0);
+    ConfigureTopBarLabel(status_label_, Lang::Strings::INITIALIZING);
+
+    /* Top layer: WiFi icon — white mask so scrolling text never draws over it */
+    lv_obj_t* wifi_slot = lv_obj_create(top_bar_);
+    lv_obj_set_size(wifi_slot, kWifiIconSlotWidth, 16);
+    lv_obj_set_style_bg_color(wifi_slot, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(wifi_slot, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(wifi_slot, 0, 0);
+    lv_obj_set_style_pad_all(wifi_slot, 0, 0);
+    lv_obj_remove_flag(wifi_slot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_align(wifi_slot, LV_ALIGN_LEFT_MID, 0, 0);
+
+    network_label_ = lv_label_create(wifi_slot);
+    lv_label_set_text(network_label_, "");
+    lv_obj_set_style_text_font(network_label_, icon_font, 0);
+    lv_obj_set_style_text_color(network_label_, lv_color_black(), 0);
+    lv_obj_set_style_text_align(network_label_, LV_TEXT_ALIGN_LEFT, 0);
+    lv_obj_align(network_label_, LV_ALIGN_LEFT_MID, 0, 0);
+
+    lv_obj_move_foreground(wifi_slot);
+
+    mute_label_ = nullptr;
+    battery_label_ = nullptr;
 
     /* Content */
     content_ = lv_obj_create(container_);

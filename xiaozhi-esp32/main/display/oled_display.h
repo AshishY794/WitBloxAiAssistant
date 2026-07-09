@@ -33,6 +33,8 @@ public:
     ~OledDisplay();
 
     virtual void SetupUI() override;
+    virtual void SetStatus(const char* status) override;
+    virtual void ShowNotification(const char* notification, int duration_ms = 3000) override;
     virtual void SetChatMessage(const char* role, const char* content) override;
     virtual void SetEmotion(const char* emotion) override;
     virtual void SetTheme(Theme* theme) override;

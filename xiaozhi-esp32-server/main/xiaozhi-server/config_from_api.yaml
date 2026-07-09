@@ -13,13 +13,10 @@ server:
   # 视觉分析接口地址
   # 向设备发送的视觉分析的接口地址
   # 如果按下面默认的写法，系统会自动生成视觉识别地址，并输出在启动日志里，这个地址你可以直接用浏览器访问确认一下
-  # 当你使用docker部署或使用公网部署(使用ssl、域名)时，不一定准确
-  # 所以如果你使用docker部署时，将vision_explain设置成局域网地址
-  # 如果你使用公网部署时，将vision_explain设置成公网地址
+  # 公网部署时请改成设备可访问的地址
   vision_explain: http://你的ip或者域名:端口号/mcp/vision/explain
 manager-api:
-  # 你的manager-api的地址，最好使用局域网ip
-  # 如果使用docker部署，请使用填写成 http://xiaozhi-esp32-server-web:8002/xiaozhi
+  # 本地源码部署使用 127.0.0.1 即可
   url: http://127.0.0.1:8002/xiaozhi
   # 你的manager-api的token，就是刚才复制出来的server.secret
   secret: 你的server.secret值

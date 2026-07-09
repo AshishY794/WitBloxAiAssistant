@@ -55,4 +55,7 @@
 // A MCP Test: Control a lamp
 #define LAMP_GPIO GPIO_NUM_18
 
+// Teacher robot servos — pins, angles, animation: teacher_servo_config.h
+#include "teacher_servo_config.h"
+
 #endif // _BOARD_CONFIG_H_

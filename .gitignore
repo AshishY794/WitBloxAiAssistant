@@ -29,3 +29,6 @@ xiaozhi-esp32-server/main/xiaozhi-server/data/
 xiaozhi-esp32-server/main/xiaozhi-server/models/SenseVoiceSmall/model.pt
 xiaozhi-esp32-server/**/__pycache__/
 xiaozhi-esp32-server/**/node_modules/
+
+tmp/
+

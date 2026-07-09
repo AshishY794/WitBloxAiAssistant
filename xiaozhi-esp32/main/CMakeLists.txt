@@ -102,6 +102,7 @@ elseif(CONFIG_BOARD_TYPE_BREAD_COMPACT_NT26)
     set(BUILTIN_ICON_FONT font_awesome_14_1)
 elseif(CONFIG_BOARD_TYPE_BREAD_COMPACT_ESP32)
     set(BOARD_TYPE "bread-compact-esp32")
+    set(BOARD_NAME "WitBloxAI")
 elseif(CONFIG_BOARD_TYPE_BREAD_COMPACT_ESP32_LCD)
     set(BOARD_TYPE "bread-compact-esp32-lcd")
     set(BUILTIN_TEXT_FONT font_puhui_basic_14_1)
@@ -1035,6 +1036,14 @@ idf_component_register(SRCS ${SOURCES}
                     EMBED_FILES ${LANG_SOUNDS} ${COMMON_SOUNDS}
                     INCLUDE_DIRS ${INCLUDE_DIRS}
                     WHOLE_ARCHIVE
+                    REQUIRES
+                        nvs_flash
+                        esp-wifi-connect
+                        json
+                        esp_lcd
+                        esp_timer
+                        esp_event
+                        esp_wifi
                     PRIV_REQUIRES
                         esp_pm
                         esp_psram
@@ -1047,6 +1056,7 @@ idf_component_register(SRCS ${SOURCES}
                         esp_driver_i2s
                         esp_driver_jpeg
                         esp_driver_ppa
+                        esp_driver_ledc
                         esp_app_format
                         app_update
                         spi_flash
@@ -1054,6 +1064,9 @@ idf_component_register(SRCS ${SOURCES}
                         efuse
                         bt
                         fatfs
+                        mqtt
+                        mbedtls
+                        esp_http_server
                         ${MAIN_PRIV_REQUIRES_EXTRA}
                     )
 
