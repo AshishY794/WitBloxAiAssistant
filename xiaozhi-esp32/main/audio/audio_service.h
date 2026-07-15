@@ -6,6 +6,7 @@
 #include <condition_variable>
 #include <chrono>
 #include <mutex>
+#include <atomic>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -115,6 +116,10 @@ public:
     const std::string& GetLastWakeWord() const;
     bool IsVoiceDetected() const { return voice_detected_; }
     bool IsIdle();
+    // True while decode/playback has TTS audio, or speaker wrote PCM recently.
+    bool IsPlayingAudio(int recent_ms = 120);
+    // 0..1 energy of last PCM chunk sent to the speaker (for lip sync).
+    float GetPlaybackEnergy() const { return playback_energy_.load(std::memory_order_relaxed); }
     void WaitForPlaybackQueueEmpty();
     bool IsWakeWordRunning() const { return xEventGroupGetBits(event_group_) & AS_EVENT_WAKE_WORD_RUNNING; }
     bool IsAudioProcessorRunning() const { return xEventGroupGetBits(event_group_) & AS_EVENT_AUDIO_PROCESSOR_RUNNING; }
@@ -183,6 +188,7 @@ private:
     esp_timer_handle_t audio_power_timer_ = nullptr;
     std::chrono::steady_clock::time_point last_input_time_;
     std::chrono::steady_clock::time_point last_output_time_;
+    std::atomic<float> playback_energy_{0.0f};
 
     void AudioInputTask();
     void AudioOutputTask();

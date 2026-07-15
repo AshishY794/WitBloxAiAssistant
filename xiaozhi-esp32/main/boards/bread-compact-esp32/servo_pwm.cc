@@ -64,7 +64,7 @@ bool ServoPwm::Attach(gpio_num_t pin, ledc_channel_t channel, ledc_mode_t speed_
     }
 
     attached_ = true;
-    WriteAngle(90);
+    // Do not force 90° here — caller sets the real home (0° arms were jumping to 90°)
     ESP_LOGI(TAG, "Servo attached pin=%d ch=%d mode=%s", (int)pin_, (int)channel_,
              speed_mode_ == LEDC_LOW_SPEED_MODE ? "low" : "high");
     return true;

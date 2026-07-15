@@ -176,6 +176,7 @@ void Application::Run() {
         MAIN_EVENT_TOGGLE_CHAT |
         MAIN_EVENT_START_LISTENING |
         MAIN_EVENT_STOP_LISTENING |
+        MAIN_EVENT_PRESENCE_GREET |
         MAIN_EVENT_ACTIVATION_DONE |
         MAIN_EVENT_STATE_CHANGED;
 
@@ -213,6 +214,10 @@ void Application::Run() {
 
         if (bits & MAIN_EVENT_STOP_LISTENING) {
             HandleStopListeningEvent();
+        }
+
+        if (bits & MAIN_EVENT_PRESENCE_GREET) {
+            HandlePresenceGreetingEvent();
         }
 
         if (bits & MAIN_EVENT_SEND_AUDIO) {
@@ -669,6 +674,42 @@ void Application::StopListening() {
     xEventGroupSetBits(event_group_, MAIN_EVENT_STOP_LISTENING);
 }
 
+void Application::StartPresenceGreeting() {
+    xEventGroupSetBits(event_group_, MAIN_EVENT_PRESENCE_GREET);
+}
+
+void Application::SetGreetingVoice(GreetingVoice voice) {
+    greeting_voice_ = voice;
+    ESP_LOGI(TAG, "Greeting voice set to %d", static_cast<int>(voice));
+}
+
+const std::string_view& Application::GetGreetingSound() const {
+    switch (greeting_voice_) {
+        case GreetingVoice::EnFemale:
+            return Lang::Sounds::OGG_GREETING_EN_FEMALE;
+        case GreetingVoice::EnMale:
+            return Lang::Sounds::OGG_GREETING_EN_MALE;
+        case GreetingVoice::HiFemale:
+            return Lang::Sounds::OGG_GREETING_HI_FEMALE;
+        case GreetingVoice::HiMale:
+        default:
+            return Lang::Sounds::OGG_GREETING_HI_MALE;
+    }
+}
+
+const char* Application::GetGreetingText() const {
+    switch (greeting_voice_) {
+        case GreetingVoice::EnFemale:
+        case GreetingVoice::EnMale:
+            return "Hi, how can I help you today?";
+        case GreetingVoice::HiFemale:
+            return "नमस्ते, आज मैं आपकी कैसे मदद कर सकती हूँ?";
+        case GreetingVoice::HiMale:
+        default:
+            return "नमस्ते, आज मैं आपकी कैसे मदद कर सकता हूँ?";
+    }
+}
+
 void Application::HandleToggleChatEvent() {
     auto state = GetDeviceState();
     
@@ -725,6 +766,97 @@ void Application::ContinueOpenAudioChannel(ListeningMode mode) {
     }
 
     SetListeningMode(mode);
+}
+
+void Application::HandlePresenceGreetingEvent() {
+    auto state = GetDeviceState();
+
+    if (state == kDeviceStateActivating) {
+        SetDeviceState(kDeviceStateIdle);
+        return;
+    } else if (state == kDeviceStateWifiConfiguring) {
+        audio_service_.EnableAudioTesting(true);
+        SetDeviceState(kDeviceStateAudioTesting);
+        return;
+    } else if (state == kDeviceStateAudioTesting) {
+        audio_service_.EnableAudioTesting(false);
+        SetDeviceState(kDeviceStateWifiConfiguring);
+        return;
+    }
+
+    if (!protocol_) {
+        ESP_LOGE(TAG, "Protocol not initialized");
+        return;
+    }
+
+    // Already in a session → stop (same as toggle)
+    if (state == kDeviceStateSpeaking) {
+        AbortSpeaking(kAbortReasonNone);
+        return;
+    }
+    if (state == kDeviceStateListening) {
+        protocol_->CloseAudioChannel();
+        return;
+    }
+    if (state != kDeviceStateIdle) {
+        return;
+    }
+
+    ESP_LOGI(TAG, "Presence greet: local voice=%d + listen", static_cast<int>(greeting_voice_));
+    presence_greet_pending_ = true;
+    play_popup_on_listening_ = false;
+
+    auto display = Board::GetInstance().GetDisplay();
+    if (display) {
+        // Text matches selected voice (Hindi male by default)
+        display->SetChatMessage("assistant", GetGreetingText());
+        display->SetEmotion("happy");
+        display->SetStatus(Lang::Strings::SPEAKING);
+    }
+
+    // Play embedded OGG immediately (no cloud TTS wait). Default: Hindi male.
+    audio_service_.PlaySound(GetGreetingSound());
+
+    ListeningMode mode = GetDefaultListeningMode();
+    if (!protocol_->IsAudioChannelOpened()) {
+        SetDeviceState(kDeviceStateConnecting);
+        Schedule([this]() {
+            ContinuePresenceGreeting();
+        });
+        return;
+    }
+
+    FinishPresenceGreeting();
+    SetListeningMode(mode);
+}
+
+void Application::ContinuePresenceGreeting() {
+    if (GetDeviceState() != kDeviceStateConnecting || !presence_greet_pending_) {
+        return;
+    }
+
+    auto& board = Board::GetInstance();
+    board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
+
+    if (!protocol_->IsAudioChannelOpened()) {
+        if (!protocol_->OpenAudioChannel()) {
+            presence_greet_pending_ = false;
+            return;
+        }
+    }
+
+    FinishPresenceGreeting();
+    SetListeningMode(GetDefaultListeningMode());
+}
+
+void Application::FinishPresenceGreeting() {
+    // Let local greeting finish; channel may already be open from overlap.
+    audio_service_.WaitForPlaybackQueueEmpty();
+    while (audio_service_.IsPlayingAudio(80)) {
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
+    presence_greet_pending_ = false;
+    play_popup_on_listening_ = false;
 }
 
 void Application::HandleStartListeningEvent() {

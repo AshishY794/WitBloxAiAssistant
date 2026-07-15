@@ -109,8 +109,11 @@ private:
                 EnterWifiConfigMode();
                 return;
             }
+            // Brief LED flash — do not leave LED stuck ON after sonar/boot click
             gpio_set_level(BUILTIN_LED_GPIO, 1);
-            app.ToggleChatState();
+            // Sonar/boot: speak local greeting fast, then listen (no cloud TTS wait)
+            app.StartPresenceGreeting();
+            gpio_set_level(BUILTIN_LED_GPIO, 0);
         });
 
         asr_button_.OnClick([this]() {

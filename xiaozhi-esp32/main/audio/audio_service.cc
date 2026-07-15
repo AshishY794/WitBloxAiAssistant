@@ -1,6 +1,8 @@
 #include "audio_service.h"
 #include <esp_log.h>
 #include <cstring>
+#include <cmath>
+#include <algorithm>
 
 #define RATE_CVT_CFG(_src_rate, _dest_rate, _channel)        \
     (esp_ae_rate_cvt_cfg_t)                                  \
@@ -304,6 +306,23 @@ void AudioService::AudioOutputTask() {
             esp_timer_stop(audio_power_timer_);
             esp_timer_start_periodic(audio_power_timer_, AUDIO_POWER_CHECK_INTERVAL_MS * 1000);
             codec_->EnableOutput(true);
+        }
+
+        // RMS energy of this PCM chunk (0..1) — used by teacher lip-sync
+        if (!task->pcm.empty()) {
+            double sum_sq = 0.0;
+            const size_t n = task->pcm.size();
+            const size_t step = (n > 240) ? (n / 240) : 1;  // light downsample
+            size_t count = 0;
+            for (size_t i = 0; i < n; i += step) {
+                const double s = task->pcm[i] / 32768.0;
+                sum_sq += s * s;
+                ++count;
+            }
+            float rms = (count > 0) ? static_cast<float>(std::sqrt(sum_sq / count)) : 0.0f;
+            // Sensible speech range → open mouth more clearly
+            rms = std::clamp(rms * 4.5f, 0.0f, 1.0f);
+            playback_energy_.store(rms, std::memory_order_relaxed);
         }
 
         codec_->OutputData(task->pcm);
@@ -656,6 +675,19 @@ void AudioService::PlaySound(const std::string_view& ogg) {
 bool AudioService::IsIdle() {
     std::lock_guard<std::mutex> lock(audio_queue_mutex_);
     return audio_encode_queue_.empty() && audio_decode_queue_.empty() && audio_playback_queue_.empty() && audio_testing_queue_.empty();
+}
+
+bool AudioService::IsPlayingAudio(int recent_ms) {
+    {
+        std::lock_guard<std::mutex> lock(audio_queue_mutex_);
+        if (!audio_decode_queue_.empty() || !audio_playback_queue_.empty()) {
+            return true;
+        }
+    }
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - last_output_time_)
+                       .count();
+    return elapsed >= 0 && elapsed < recent_ms;
 }
 
 void AudioService::WaitForPlaybackQueueEmpty() {

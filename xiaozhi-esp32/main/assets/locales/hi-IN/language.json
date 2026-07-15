@@ -54,6 +54,7 @@
         "CONNECTION_SUCCESSFUL": "कनेक्शन सफल",
         "FLIGHT_MODE_OFF": "फ़्लाइट मोड बंद है",
         "FLIGHT_MODE_ON": "फ़्लाइट मोड चालू है",
-        "MODEM_INIT_ERROR": "मॉडेम आरंभीकरण विफल"
+        "MODEM_INIT_ERROR": "मॉडेम आरंभीकरण विफल",
+        "GREETING": "नमस्ते, आज मैं आपकी कैसे मदद कर सकता हूँ?"
     }
 }
